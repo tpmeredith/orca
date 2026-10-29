@@ -63,9 +63,10 @@ export class DeviceRegistry {
     name: string,
     scope: DeviceScope = 'mobile',
     pairingReach: RuntimePairingReach = 'network',
-    grants: readonly RuntimeDeviceGrant[] = []
+    grants: readonly RuntimeDeviceGrant[] = [],
+    options: { dedicated?: boolean } = {}
   ): TokenDeviceEntry {
-    return this.createAndPersistDevice(this.devices, name, scope, pairingReach, grants)
+    return this.createAndPersistDevice(this.devices, name, scope, pairingReach, grants, options)
   }
 
   private createAndPersistDevice(
@@ -73,7 +74,8 @@ export class DeviceRegistry {
     name: string,
     scope: DeviceScope,
     pairingReach: RuntimePairingReach,
-    grants: readonly RuntimeDeviceGrant[]
+    grants: readonly RuntimeDeviceGrant[],
+    options: { dedicated?: boolean } = {}
   ): TokenDeviceEntry {
     const validatedGrants = validGrants(grants, scope)
     const entry: TokenDeviceEntry = {
@@ -83,6 +85,7 @@ export class DeviceRegistry {
       pairedAt: Date.now(),
       lastSeenAt: 0,
       pairingReach,
+      ...(options.dedicated ? { dedicatedPairing: true as const } : {}),
       ...(validatedGrants ? { grants: validatedGrants } : {})
     }
     const nextDevices = [...existingDevices, entry]
