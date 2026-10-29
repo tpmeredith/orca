@@ -4,7 +4,7 @@ import { writeDurableSecureJsonFile, writeSecureJsonFile } from '../../shared/se
 import type { DeviceScope } from '../../shared/runtime-types'
 import { removeStaleDurableWriteTempFiles } from '../durable-file-write'
 import { DEVICE_REGISTRY_FILENAME } from './mobile-pairing-files'
-import { mintDeviceCredential } from './device-credential'
+import { mintTokenDevice } from './device-credential'
 import { planDeviceKeyFork } from './device-key-fork'
 import { planIdleEphemeralPrune, withoutEphemeralRows } from './ephemeral-device-rows'
 import { quarantineCorruptRegistry } from './device-registry-corruption'
@@ -77,17 +77,7 @@ export class DeviceRegistry {
     grants: readonly RuntimeDeviceGrant[],
     options: { dedicated?: boolean } = {}
   ): TokenDeviceEntry {
-    const validatedGrants = validGrants(grants, scope)
-    const entry: TokenDeviceEntry = {
-      ...mintDeviceCredential(),
-      name,
-      scope,
-      pairedAt: Date.now(),
-      lastSeenAt: 0,
-      pairingReach,
-      ...(options.dedicated ? { dedicatedPairing: true as const } : {}),
-      ...(validatedGrants ? { grants: validatedGrants } : {})
-    }
+    const entry = mintTokenDevice(name, scope, pairingReach, grants, options)
     const nextDevices = [...existingDevices, entry]
     // Credentials become valid only after durable persistence.
     this.save(nextDevices)
