@@ -254,6 +254,7 @@ export function buildDefaultSettings(args: {
     machineName: '',
     // Why: off keeps the cosmetic overlay unmounted for users who never opt in.
     experimentalPet: false,
+    experimentalMultiWindow: false,
     experimentalActivity: false,
     experimentalActivityDefaultedOffForAllUsers: true,
     experimentalTerminalAttention: false,
