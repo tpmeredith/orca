@@ -67,6 +67,7 @@ const testDouble = <T>(value: unknown): T => value as T
 describe('runtime-controller spawn: hidden until a renderer view mounts', () => {
   const {
     mainWindow,
+    mainWindowIpcEvent,
     installObservableDaemonTestProvider,
     getPtySetHiddenRendererPtyListener,
     getPtySetRendererPtyVisibleListener,
@@ -132,7 +133,11 @@ describe('runtime-controller spawn: hidden until a renderer view mounts', () => 
     const result = await controller.spawn({ cols: 80, rows: 24, initiallyHidden: true })
     expect(daemon.setPtyBackgrounded).toHaveBeenLastCalledWith(result.id, true)
 
-    getPtySetRendererPtyVisibleListener()(null, { id: result.id, visible: true })
+    daemon.setPtyBackgrounded.mockClear()
+    getPtySetRendererPtyVisibleListener()({ sender: {} }, { id: result.id, visible: true })
+    expect(daemon.setPtyBackgrounded).not.toHaveBeenCalled()
+
+    getPtySetRendererPtyVisibleListener()(mainWindowIpcEvent, { id: result.id, visible: true })
     expect(daemon.setPtyBackgrounded).toHaveBeenLastCalledWith(result.id, false)
   })
 
@@ -156,7 +161,7 @@ describe('runtime-controller spawn: hidden until a renderer view mounts', () => 
     const controller = installController(runtime)
 
     const result = await controller.spawn({ cols: 80, rows: 24, initiallyHidden: true })
-    getPtySetRendererPtyVisibleListener()(null, { id: result.id, visible: true })
+    getPtySetRendererPtyVisibleListener()(mainWindowIpcEvent, { id: result.id, visible: true })
     getPtySetHiddenRendererPtyListener()(null, { id: result.id, hidden: false })
     expect(isHiddenRendererPty(result.id)).toBe(false)
 
@@ -181,7 +186,10 @@ describe('runtime-controller spawn: hidden until a renderer view mounts', () => 
 
     const spawnPromise = controller.spawn({ cols: 80, rows: 24, initiallyHidden: true })
     await vi.waitFor(() => expect(mintedSessionId).toBeDefined())
-    getPtySetRendererPtyVisibleListener()(null, { id: mintedSessionId!, visible: true })
+    getPtySetRendererPtyVisibleListener()(mainWindowIpcEvent, {
+      id: mintedSessionId!,
+      visible: true
+    })
     getPtySetHiddenRendererPtyListener()(null, { id: mintedSessionId!, hidden: false })
     spawnGate.resolve()
     const result = await spawnPromise

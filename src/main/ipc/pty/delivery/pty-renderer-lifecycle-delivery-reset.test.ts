@@ -107,7 +107,7 @@ describe('registerPtyHandlers', () => {
       const setRendererPtyVisible = getPtySetRendererPtyVisibleListener()
       mainWindow.webContents.send.mockClear()
 
-      setRendererPtyVisible(null, { id: spawnResult.id, visible: true })
+      setRendererPtyVisible(mainWindowIpcEvent, { id: spawnResult.id, visible: true })
       mockProc.emitData('visible output')
       vi.advanceTimersByTime(2)
       expect(mainWindow.webContents.send).toHaveBeenCalledWith('pty:data', {
@@ -116,9 +116,9 @@ describe('registerPtyHandlers', () => {
       })
 
       mainWindow.webContents.send.mockClear()
-      setRendererPtyVisible(null, { id: spawnResult.id, visible: false })
+      setRendererPtyVisible(mainWindowIpcEvent, { id: spawnResult.id, visible: false })
       mockProc.emitData('\x1b[2Khidden-width redraw')
-      setRendererPtyVisible(null, { id: spawnResult.id, visible: true })
+      setRendererPtyVisible(mainWindowIpcEvent, { id: spawnResult.id, visible: true })
       vi.advanceTimersByTime(2)
 
       expect(mainWindow.webContents.send).toHaveBeenCalledWith('pty:data', {
@@ -147,7 +147,7 @@ describe('registerPtyHandlers', () => {
       const handleRendererDispatcherReady = getPtyRendererDispatcherReadyListener()
       mainWindow.webContents.send.mockClear()
 
-      setRendererPtyVisible(null, { id: spawnResult.id, visible: true })
+      setRendererPtyVisible(mainWindowIpcEvent, { id: spawnResult.id, visible: true })
       handleRendererLoading()
       handleRendererDispatcherReady()
       mockProc.emitData('reload-gap output')
@@ -160,7 +160,7 @@ describe('registerPtyHandlers', () => {
       })
 
       mainWindow.webContents.send.mockClear()
-      setRendererPtyVisible(null, { id: spawnResult.id, visible: true })
+      setRendererPtyVisible(mainWindowIpcEvent, { id: spawnResult.id, visible: true })
       mockProc.emitData('visible output')
       vi.advanceTimersByTime(2)
 

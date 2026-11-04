@@ -14,6 +14,8 @@ import { BrowserExtensionsExperimentalSetting } from '../browser/extensions/Brow
 import { OrchestrationPanelExperimentalSetting } from '../orchestration/OrchestrationPanelExperimentalSetting'
 import { WslHostsExperimentalSetting } from '../wsl/hosts/WslHostsExperimentalSetting'
 import { wslHostsAvailable } from '../../sidebar/use-wsl-hosts-enabled'
+import { ExperimentalMultiWindowSetting } from './ExperimentalMultiWindowSetting'
+import { getMultiWindowSearchEntry } from './multi-window-search-entry'
 import {
   MAX_AGENT_HIBERNATION_IDLE_MS,
   MIN_AGENT_HIBERNATION_IDLE_MS,
@@ -35,6 +37,7 @@ export function ExperimentalPane({
   hiddenExperimentalUnlocked = false
 }: ExperimentalPaneProps): React.JSX.Element {
   const searchQuery = useAppStore((s) => s.settingsSearchQuery)
+  const showMultiWindow = matchesSettingsSearch(searchQuery, [getMultiWindowSearchEntry()])
   const showPet = matchesSettingsSearch(searchQuery, [getExperimentalSearchEntry().pet])
   const showAgentDashboard = matchesSettingsSearch(searchQuery, [
     getExperimentalSearchEntry().agentDashboard
@@ -57,6 +60,9 @@ export function ExperimentalPane({
 
   return (
     <div className="space-y-4">
+      {showMultiWindow ? (
+        <ExperimentalMultiWindowSetting settings={settings} updateSettings={updateSettings} />
+      ) : null}
       {showAgentDashboard ? (
         <AgentDashboardExperimentalSetting settings={settings} updateSettings={updateSettings} />
       ) : null}

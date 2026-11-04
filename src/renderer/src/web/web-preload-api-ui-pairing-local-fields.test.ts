@@ -23,6 +23,57 @@ vi.mock('./web-runtime-client', () => ({
 }))
 
 describe('web UI preload API pairing-local fields', () => {
+  it('keeps worker filters and workspace selection through a tab interaction and UI reload', async () => {
+    runtimeClient.call.mockImplementation((method) =>
+      Promise.resolve({
+        id: method,
+        ok: true,
+        result: {
+          ui: {
+            filterRepoIds: ['host-project'],
+            groupBy: 'none',
+            activeView: 'tasks',
+            lastActiveRepoId: 'host-project',
+            lastActiveWorktreeId: 'host-worktree',
+            uiZoomLevel: 0,
+            featureInteractions: {
+              'terminal-tabs': { firstInteractedAt: 100, interactionCount: 1 }
+            }
+          }
+        },
+        _meta: { runtimeId: 'runtime-1' }
+      })
+    )
+    const globals = installBrowserGlobals('Linux')
+    globals.window.location.search = '?orcaWindow=worker'
+    writeStoredRuntimeEnvironment(globals.storage)
+    const { installWebPreloadApi } = await import('./web-preload-api')
+    installWebPreloadApi()
+    const workerUi = {
+      filterRepoIds: ['worker-project'],
+      groupBy: 'repo' as const,
+      activeView: 'terminal' as const,
+      lastActiveRepoId: 'worker-project',
+      lastActiveWorktreeId: 'worker-worktree',
+      uiZoomLevel: 2
+    }
+    await globals.window.api.ui.set(workerUi)
+    expect(runtimeClient.call).toHaveBeenCalledWith('ui.set', {}, expect.anything())
+    await expect(
+      globals.window.api.ui.recordFeatureInteraction('terminal-tabs')
+    ).resolves.toMatchObject({
+      ...workerUi,
+      featureInteractions: {
+        'terminal-tabs': { firstInteractedAt: 100, interactionCount: 1 }
+      }
+    })
+    expect(globals.window.api.ui.getZoomLevel()).toBe(2)
+    expect(JSON.parse(globals.storage.getItem('orca.web.ui.v1') ?? '{}')).toMatchObject(workerUi)
+
+    installWebPreloadApi()
+    await expect(globals.window.api.ui.get()).resolves.toMatchObject(workerUi)
+    expect(globals.window.api.ui.getZoomLevel()).toBe(2)
+  })
   afterEach(async () => {
     try {
       const { removeActiveRuntimeEnvironment } = await import('./preload-api/web-runtime-session')

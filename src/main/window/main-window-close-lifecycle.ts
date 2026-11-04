@@ -8,6 +8,7 @@ import type { MainWindowFocusLifecycle } from './main-window-focus-lifecycle'
 import type { MainWindowStateLifecycle } from './main-window-state-lifecycle'
 import { syncTrafficLightPosition } from './main-window-visual-lifecycle'
 import { consumeUserQuitWindowClose } from './user-quit-window-close'
+import { forgetRetainedHostWindow, retainHostWindowForWorkers } from './worker-window'
 
 export const WINDOW_QUIT_RENDERER_ACK_TIMEOUT_MS = QUIT_RENDERER_ACK_TIMEOUT_MS
 
@@ -91,6 +92,13 @@ export function installMainWindowCloseLifecycle(args: {
 
   mainWindow.on('close', (e) => {
     const userQuitClose = consumeUserQuitWindowClose(mainWindow)
+    if (userQuitClose || opts?.getIsQuitting?.() === true) {
+      forgetRetainedHostWindow(mainWindow)
+    } else if (retainHostWindowForWorkers(mainWindow)) {
+      windowCloseConfirmed = false
+      e.preventDefault()
+      return
+    }
     // Alt+F4/programmatic closes need the same tray guard as the custom X.
     if (!windowCloseConfirmed && !userQuitClose && hideToTrayIfEnabled()) {
       e.preventDefault()

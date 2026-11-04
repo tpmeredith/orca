@@ -11,6 +11,7 @@ import { createAppMenuSelectionItem, resolveNativeEditTarget } from './app-menu-
 import { createAppMenuQuitItems, type AppMenuQuitHandlers } from './app-menu-quit-item'
 import { createAppMenuReloadAndDevToolsItems } from './app-menu-reload-devtools-items'
 import { createAppWindowMenu } from './app-menu-window'
+import { createNewWindowMenuItems } from './app-menu-new-window'
 
 export type AppearanceMenuState = {
   showTasksButton: boolean
@@ -27,6 +28,8 @@ export function getNextDefaultOnAppearanceSettingValue(current: boolean | undefi
 }
 
 type RegisterAppMenuOptions = AppMenuQuitHandlers & {
+  multiWindowEnabled?: () => boolean
+  onNewWindow?: () => void
   onOpenSettings: () => void
   onOpenSetupGuide: (window?: Electron.BaseWindow | null) => void
   onOpenFeatureTour: (window?: Electron.BaseWindow | null) => void
@@ -143,9 +146,18 @@ function buildAndApplyMenu(options: RegisterAppMenuOptions): void {
     ]
   }
 
+  const newWindowItems = createNewWindowMenuItems(
+    options.multiWindowEnabled?.(),
+    options.onNewWindow
+  )
   const fileMenu: Electron.MenuItemConstructorOptions = {
     label: translateMain('menu.file', 'File'),
-    submenu: [settingsItem, { type: 'separator' }, ...createAppMenuQuitItems(options)]
+    submenu: [
+      ...newWindowItems,
+      ...(isMac
+        ? []
+        : [settingsItem, { type: 'separator' } as const, ...createAppMenuQuitItems(options)])
+    ]
   }
 
   // Keep menu hints while non-macOS Ctrl+Z/Ctrl+Y reach focused terminal or DOM controls.
@@ -295,7 +307,7 @@ function buildAndApplyMenu(options: RegisterAppMenuOptions): void {
 
   const template: Electron.MenuItemConstructorOptions[] = [
     ...(isMac ? [macAppMenu] : []),
-    ...(isMac ? [] : [fileMenu]),
+    ...(!isMac || newWindowItems.length ? [fileMenu] : []),
     editMenu,
     viewMenu,
     windowMenu,

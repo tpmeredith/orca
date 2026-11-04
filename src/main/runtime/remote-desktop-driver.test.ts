@@ -1,163 +1,52 @@
-import type * as WorktreeScanCacheModule from '../git/worktrees/catalog/worktree-scan-cache'
-import type * as WorktreeListingModule from '../git/worktrees/catalog/worktree-listing'
-/** Desktop viewers suppress host resize, never input; mobile drivers retain priority and the final viewer releases its floor. */
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import type * as GitUsernameModule from '../git/git-username'
-import { OrcaRuntimeService } from './orca-runtime'
+import {
+  createRuntime,
+  store,
+  hostProviderWrite,
+  TestOrcaRuntimeService,
+  OrcaRuntimeService
+} from './remote-desktop-driver-test-harness'
 import { createPtyWriteInput } from '../ipc/pty/ipc/write-input'
 import { ptyOwnership } from '../ipc/pty/provider/ownership-state'
 
-const { hostProviderWrite } = vi.hoisted(() => ({ hostProviderWrite: vi.fn(() => true) }))
-vi.mock('../git/worktrees/catalog/worktree-scan-cache', async (importOriginal) => {
-  const facade = getWorktreeListingMocks()
-  return {
-    ...(await importOriginal<typeof WorktreeScanCacheModule>()),
-    listWorktrees: facade.listWorktrees
-  }
-})
-
-vi.mock('../git/worktrees/catalog/worktree-listing', async (importOriginal) => {
-  const facade = getWorktreeListingMocks()
-  return {
-    ...(await importOriginal<typeof WorktreeListingModule>()),
-    listWorktreesStrict: facade.listWorktreesStrict
-  }
-})
-
-vi.mock('../ipc/pty/provider/registry', async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  tryGetProviderForPty: () => ({ write: hostProviderWrite, hasPty: () => true })
-}))
-
-const { getWorktreeListingMocks } = vi.hoisted(() => {
-  const createWorktreeListingMocks = () => ({
-    listWorktrees: vi.fn().mockResolvedValue([]),
-    listWorktreesStrict: vi.fn().mockResolvedValue([])
-  })
-  let listings: ReturnType<typeof createWorktreeListingMocks> | undefined
-  return { getWorktreeListingMocks: () => (listings ??= createWorktreeListingMocks()) }
-})
-vi.mock('../workspace-hooks/hooks', () => ({
-  getEffectiveHooks: vi.fn().mockReturnValue(null),
-  runHook: vi.fn().mockResolvedValue({ success: true, output: '' })
-}))
-vi.mock('../workspace-hooks/worktree-runner-script', () => ({ createSetupRunnerScript: vi.fn() }))
-vi.mock('../ipc/worktree-logic', async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>
-  return { ...actual, computeWorktreePath: vi.fn(), ensurePathWithinWorkspace: vi.fn() }
-})
-vi.mock('../ipc/worktrees/removal/registered-worktree-roots-cache', () => ({
-  invalidateAuthorizedRootsCache: vi.fn(),
-  invalidateAuthorizedRootsCacheForRepo: vi.fn()
-}))
-vi.mock('../git/repo', async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>
-  return {
-    ...actual,
-    getDefaultBaseRef: vi.fn().mockReturnValue('origin/main'),
-    getBranchConflictKind: vi.fn().mockResolvedValue(null)
-  }
-})
-vi.mock('../git/git-username', async () => {
-  const actual = await vi.importActual<typeof GitUsernameModule>('../git/git-username')
-  return { ...actual, resolveLocalGitUsername: vi.fn(async () => '') }
-})
-
-class TestOrcaRuntimeService extends OrcaRuntimeService {
-  getLayoutForTest(ptyId: string) {
-    return this.getLayout(ptyId)
-  }
-
-  getLayoutQueues() {
-    return this.layoutQueues
-  }
-}
-
-const store = {
-  getRepo: () => ({
-    id: 'repo-1',
-    path: '/tmp/repo',
-    displayName: 'repo',
-    badgeColor: 'blue',
-    addedAt: 1
-  }),
-  getRepos: () => [store.getRepo()],
-  addRepo: () => {},
-  updateRepo: () => undefined as never,
-  getAllWorktreeMeta: () => ({}),
-  getWorktreeMeta: () => undefined,
-  getGitHubCache: () => ({ pr: {}, issue: {} }),
-  setWorktreeMeta: () => undefined as never,
-  removeWorktreeMeta: () => {},
-  getRetiredWorktreeNameRegistry: () => ({ exhaustedTiers: 0, names: [] }),
-  addRetiredWorktreeName: () => {},
-  mergeRetiredWorktreeNames: () => false,
-  getSettings: () => ({
-    workspaceDir: '/tmp/workspaces',
-    nestWorkspaces: false,
-    refreshLocalBaseRefOnWorktreeCreate: false,
-    branchPrefix: 'none',
-    branchPrefixCustom: '',
-    mobileAutoRestoreFitMs: 5_000
-  })
-}
-
-function createRuntime(mobileAutoRestoreFitMs: number | null = 5_000) {
-  const runtime = new TestOrcaRuntimeService({
-    ...store,
-    getSettings: () => ({ ...store.getSettings(), mobileAutoRestoreFitMs })
-  })
-  const ptySizes = new Map<string, { cols: number; rows: number }>([
-    ['pty-1', { cols: 150, rows: 40 }]
-  ])
-  const resizeCalls: { ptyId: string; cols: number; rows: number }[] = []
-  const driverEvents: { ptyId: string; driver: { kind: string; clientId?: string } }[] = []
-  const fitOverrideEvents: { ptyId: string; mode: string; cols: number; rows: number }[] = []
-  let resizeSucceeds = true
-  runtime.setPtyController({
-    write: () => true,
-    kill: () => true,
-    getForegroundProcess: async () => null,
-    resize: (ptyId, cols, rows) => {
-      // Production resize returns false after provider failure or PTY exit.
-      if (!resizeSucceeds) {
-        return false
-      }
-      resizeCalls.push({ ptyId, cols, rows })
-      ptySizes.set(ptyId, { cols, rows })
-      return true
-    },
-    getSize: (ptyId) => ptySizes.get(ptyId) ?? null
-  })
-  runtime.setNotifier({
-    worktreesChanged: vi.fn(),
-    reposChanged: vi.fn(),
-    activateWorktree: vi.fn(),
-    createTerminal: vi.fn(),
-    splitTerminal: vi.fn(),
-    renameTerminal: vi.fn(),
-    focusTerminal: vi.fn(),
-    closeTerminal: vi.fn(),
-    terminalFitOverrideChanged: (ptyId, mode, cols, rows) => {
-      fitOverrideEvents.push({ ptyId, mode, cols, rows })
-    },
-    terminalDriverChanged: (ptyId, driver) => {
-      driverEvents.push({ ptyId, driver: { ...driver } })
-    }
-  })
-  return {
-    runtime,
-    ptySizes,
-    driverEvents,
-    fitOverrideEvents,
-    resizeCalls,
-    setResizeSucceeds: (next: boolean) => {
-      resizeSucceeds = next
-    }
-  }
-}
-
 describe('remote desktop viewer width driver', () => {
+  it('retains an indefinite phone-fit hold when a formerly mirrored native window hides', async () => {
+    const { runtime, ptySizes, resizeCalls } = createRuntime(null)
+    runtime.setLocalTerminalWindowVisible(1, true)
+    runtime.setLocalTerminalWindowVisible(2, true)
+    runtime.setLocalTerminalWindowLease('pty-1', 'host:1', 1, true)
+    runtime.setLocalTerminalWindowLease('pty-1', 'worker-stream', 2, true)
+    expect(runtime.getLocalSharedTerminalGrid('pty-1')).toEqual({ cols: 150, rows: 40 })
+    runtime.recordRendererGeometry('pty-1', 170, 45)
+
+    await runtime.handleMobileSubscribe('pty-1', 'phone-A', { cols: 45, rows: 20 })
+    expect(runtime.getLocalSharedTerminalGrid('pty-1')).toBeNull()
+    expect(await runtime.writeTerminalPreviewInput('pty-1', 'blocked')).toBe(false)
+    runtime.handleMobileUnsubscribe('pty-1', 'phone-A')
+    await vi.advanceTimersByTimeAsync(300)
+    expect(runtime.getDriver('pty-1')).toEqual({ kind: 'idle' })
+    expect(runtime.getLayoutForTest('pty-1')?.kind).toBe('phone')
+    expect(ptySizes.get('pty-1')).toEqual({ cols: 45, rows: 20 })
+    const phoneResizes = [...resizeCalls]
+
+    runtime.setLocalTerminalWindowVisible(2, false)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(resizeCalls).toEqual(phoneResizes)
+    expect(ptySizes.get('pty-1')).toEqual({ cols: 45, rows: 20 })
+    expect(runtime.getLayoutForTest('pty-1')?.kind).toBe('phone')
+    expect(runtime.getTerminalFitOverride('pty-1')).toMatchObject({
+      mode: 'mobile-fit',
+      cols: 45,
+      rows: 20
+    })
+    expect(runtime.getLocalSharedTerminalGrid('pty-1')).toBeNull()
+
+    await runtime.handleMobileSubscribe('pty-1', 'phone-B', { cols: 50, rows: 22 })
+    expect(runtime.getDriver('pty-1')).toEqual({ kind: 'mobile', clientId: 'phone-B' })
+    expect(ptySizes.get('pty-1')).toEqual({ cols: 50, rows: 22 })
+    expect(await runtime.writeTerminalPreviewInput('pty-1', 'still-blocked')).toBe(false)
+  })
+
   beforeEach(() => vi.useFakeTimers())
   afterEach(() => vi.useRealTimers())
 
@@ -508,6 +397,134 @@ describe('remote desktop viewer width driver', () => {
 
     expect(resizeCalls).toEqual([{ ptyId: 'pty-1', cols: 150, rows: 40 }])
   })
+
+  it('keeps a replacement local stream pinned when the retired same-slot cleanup settles', async () => {
+    const { runtime, resizeCalls } = createRuntime()
+    const key = 'multiplex:worker-connection:7'
+    const canonical = { cols: 150, rows: 40 }
+    runtime.setLocalTerminalWindowVisible(1, true)
+    runtime.setLocalTerminalWindowVisible(2, true)
+    runtime.setLocalTerminalWindowLease('pty-1', 'host:1', 1, true)
+    runtime.setLocalTerminalWindowLease('pty-1', key, 2, true)
+    await runtime.updateRemoteDesktopViewer('pty-1', key, 'retired-viewer', 80, 24, false)
+    expect(runtime.getRemoteDesktopFitHold('pty-1', key)).toMatchObject({
+      ...canonical,
+      localSharedGrid: true
+    })
+    resizeCalls.splice(0)
+
+    runtime.removeLocalTerminalWindowLease('pty-1', key)
+    const unregistering = runtime.unregisterRemoteDesktopViewers('pty-1', [key])
+    runtime.setLocalTerminalWindowLease('pty-1', key, 2, false)
+    const registering = runtime.updateRemoteDesktopViewer(
+      'pty-1',
+      key,
+      'replacement-viewer',
+      72,
+      22,
+      false
+    )
+    runtime.setLocalTerminalWindowLease('pty-1', key, 2, true)
+    await unregistering
+    await registering
+
+    await expect(runtime.claimRemoteDesktopViewer('pty-1', key)).resolves.toBe(true)
+    await runtime.refreshRemoteDesktopViewer('pty-1', 'replacement-viewer', 90, 28, true)
+    expect(runtime.getTerminalSize('pty-1')).toEqual(canonical)
+    expect(resizeCalls).toEqual([])
+    expect(runtime.getRemoteDesktopFitHold('pty-1', key)).toEqual({
+      mode: 'remote-desktop-fit',
+      ...canonical,
+      localSharedGrid: true
+    })
+  })
+
+  it.each([
+    { survivor: 'host', queued: false },
+    { survivor: 'host', queued: true },
+    { survivor: 'worker', queued: false },
+    { survivor: 'worker', queued: true }
+  ] as const)(
+    'makes the surviving $survivor authoritative before clearing its shared hold (queued: $queued)',
+    async ({ survivor, queued }) => {
+      const { runtime, ptySizes, resizeCalls } = createRuntime()
+      const workerKey = 'multiplex:worker-connection:7'
+      const hostGrid = { cols: 137, rows: 64 }
+      const workerGrid = { cols: 90, rows: 28 }
+      runtime.setLocalTerminalWindowVisible(1, true)
+      runtime.setLocalTerminalWindowVisible(2, true)
+      if (survivor === 'host') {
+        runtime.setLocalTerminalWindowLease('pty-1', workerKey, 2, true)
+        await runtime.updateRemoteDesktopViewer('pty-1', workerKey, 'worker', 94, 56)
+        runtime.setLocalTerminalWindowLease('pty-1', 'host:1', 1, true)
+      } else {
+        runtime.setLocalTerminalWindowLease('pty-1', 'host:1', 1, true)
+        runtime.setLocalTerminalWindowLease('pty-1', workerKey, 2, true)
+      }
+      const canonical = runtime.getTerminalSize('pty-1')
+      expect(runtime.getLocalSharedTerminalGrid('pty-1')).toEqual(canonical)
+      runtime.recordRendererGeometry('pty-1', hostGrid.cols, hostGrid.rows)
+      await runtime.updateRemoteDesktopViewer(
+        'pty-1',
+        workerKey,
+        'worker',
+        workerGrid.cols,
+        workerGrid.rows,
+        false
+      )
+      expect(runtime.getTerminalSize('pty-1')).toEqual(canonical)
+      resizeCalls.splice(0)
+
+      const events: string[] = []
+      const fits: { hostMode: string; workerMode: string; localSharedGrid: boolean }[] = []
+      const unsubscribeFit = runtime.subscribeToFitOverrideChanges('pty-1', (event) => {
+        const hold = runtime.getRemoteDesktopFitHold('pty-1', workerKey)
+        fits.push({
+          hostMode: event.mode,
+          workerMode: hold.mode,
+          localSharedGrid: event.localSharedGrid === true || hold.localSharedGrid === true
+        })
+        events.push('fit')
+      })
+      const unsubscribeResize = runtime.subscribeToTerminalResize('pty-1', () => {
+        events.push('resize')
+      })
+      if (queued) {
+        runtime.getLayoutQueues().set('pty-1', { running: new Promise(() => {}), pending: [] })
+      }
+      try {
+        runtime.setLocalTerminalWindowLease(
+          'pty-1',
+          survivor === 'host' ? workerKey : 'host:1',
+          survivor === 'host' ? 2 : 1,
+          false
+        )
+
+        expect(fits[0]).toMatchObject({
+          [survivor === 'host' ? 'hostMode' : 'workerMode']: 'desktop-fit',
+          localSharedGrid: false
+        })
+        if (queued) {
+          expect(events).toEqual(['fit'])
+          expect(ptySizes.get('pty-1')).toEqual(canonical)
+          await runtime.runNextQueuedLayoutForTest('pty-1')
+        }
+        await vi.advanceTimersByTimeAsync(0)
+
+        const expected = survivor === 'host' ? hostGrid : workerGrid
+        expect(ptySizes.get('pty-1')).toEqual(expected)
+        expect(resizeCalls).toEqual([{ ptyId: 'pty-1', ...expected }])
+        expect(events.indexOf('resize')).toBeGreaterThan(events.indexOf('fit'))
+        expect(runtime.getRemoteDesktopFitHold('pty-1', workerKey).mode).toBe(
+          survivor === 'worker' ? 'desktop-fit' : 'remote-desktop-fit'
+        )
+      } finally {
+        unsubscribeFit()
+        unsubscribeResize()
+        runtime.getLayoutQueues().delete('pty-1')
+      }
+    }
+  )
 
   it('applies the latest viewer width when the host takes back from a phone', async () => {
     const { runtime } = createRuntime()

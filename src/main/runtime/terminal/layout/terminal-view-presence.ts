@@ -119,6 +119,7 @@ export abstract class OrcaRuntimeWithNotifyRemoteTerminalViewPresenceChanged ext
       mode: 'mobile-fit' | 'remote-desktop-fit' | 'desktop-fit'
       cols: number
       rows: number
+      localSharedGrid?: boolean
     }) => void
   ): () => void {
     return addListenerToMap(this.fitOverrideListeners, ptyId, listener)
@@ -132,13 +133,18 @@ export abstract class OrcaRuntimeWithNotifyRemoteTerminalViewPresenceChanged ext
     ptyId: string,
     mode: 'mobile-fit' | 'remote-desktop-fit' | 'desktop-fit',
     cols: number,
-    rows: number
+    rows: number,
+    localSharedGrid?: boolean
   ): void {
     const listeners = this.fitOverrideListeners.get(ptyId)
     if (!listeners) {
       return
     }
-    notifyRuntimeListeners(listeners, (listener) => listener({ mode, cols, rows }), 'fit-override')
+    notifyRuntimeListeners(
+      listeners,
+      (listener) => listener({ mode, cols, rows, ...(localSharedGrid ? { localSharedGrid } : {}) }),
+      'fit-override'
+    )
   }
 
   serializeTerminalBuffer(

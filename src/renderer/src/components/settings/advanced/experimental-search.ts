@@ -7,8 +7,10 @@ import { getEphemeralVmsSearchEntry } from '../virtual-machines/recipes/ephemera
 import { getBrowserExtensionsExperimentalSearchEntry } from '../browser/extensions/browser-extensions-experimental-search'
 import { getWslHostsExperimentalSearchEntry } from '../wsl/hosts/wsl-hosts-experimental-search'
 import { getOrchestrationPanelExperimentalSearchEntry } from '../orchestration/orchestration-panel-experimental-search'
+import { getMultiWindowSearchEntry } from './multi-window-search-entry'
+import { isWebClientLocation } from '@/lib/web-client-location'
 
-export const getExperimentalPaneSearchEntries = createLocalizedCatalog(
+const getExperimentalPaneConnectedClientSearchEntries = createLocalizedCatalog(
   (): SettingsSearchEntry[] => [
     {
       title: translate('auto.components.settings.experimental.search.87d99e634b', 'Pet'),
@@ -190,6 +192,21 @@ export const getExperimentalPaneSearchEntries = createLocalizedCatalog(
       : [])
   ]
 )
+
+const getExperimentalPaneDesktopSearchEntries = createLocalizedCatalog(
+  (): SettingsSearchEntry[] => [
+    ...getExperimentalPaneConnectedClientSearchEntries(),
+    getMultiWindowSearchEntry()
+  ]
+)
+
+export function getExperimentalPaneSearchEntries({
+  isWebClient = isWebClientLocation()
+}: { isWebClient?: boolean } = {}): SettingsSearchEntry[] {
+  return isWebClient
+    ? getExperimentalPaneConnectedClientSearchEntries()
+    : getExperimentalPaneDesktopSearchEntries()
+}
 
 // Resolve by title and fail loudly on renames so changing catalog shape cannot silently retarget numeric indexes.
 function findEntry(title: string): SettingsSearchEntry {
