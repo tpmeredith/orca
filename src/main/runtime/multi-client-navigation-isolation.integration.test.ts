@@ -624,6 +624,12 @@ describe('paired runtime navigation isolation', () => {
       harness.readerB.next('tabs-b', (response) => resultType(response) === 'updated')
     ])
     expect(activeTabId(updateA)).toBe('client-a2-tab')
+    expect(updateA).toMatchObject({
+      result: {
+        publicationEpoch: 'renderer:host:client-navigation',
+        snapshotVersion: snapshotVersion(selectA2)
+      }
+    })
     expect(activeTabId(updateB)).toBe('client-b-tab')
     expect(harness.hostSelections.tabId).toBe('host-tab')
     expect(harness.focusTerminal).not.toHaveBeenCalled()
